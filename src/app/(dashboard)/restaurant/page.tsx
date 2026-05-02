@@ -9,7 +9,7 @@ import { ImpactCounter } from "@/components/impact-counter";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { VoiceButton } from "@/components/voice-button";
+import { VoiceAssistant } from "@/components/voice-assistant";
 import MapComponent from "@/components/ui/map";
 import { formatTimestamp, timeFromNow } from "@/lib/utils";
 import { Package, CheckCircle, Clock, Plus, Bell, Zap, Volume2 } from "lucide-react";

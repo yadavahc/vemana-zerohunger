@@ -7,7 +7,7 @@ import { ImpactCounter } from "@/components/impact-counter";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { VoiceButton } from "@/components/voice-button";
+import { VoiceAssistant } from "@/components/voice-assistant";
 import { formatTimestamp } from "@/lib/utils";
 import { Truck, CheckCircle, MapPin, Camera, ShieldCheck, AlertTriangle, Volume2, Clock, Navigation } from "lucide-react";
 import { useTranslation } from "@/context/language-context";

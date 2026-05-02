@@ -16,6 +16,7 @@ import {
 import { VoiceInput } from "@/components/voice-input";
 import { useTranslation } from "@/context/language-context";
 import toast from "react-hot-toast";
+import { getFirestore, doc, updateDoc } from "firebase/firestore";
 
 const langMap: Record<string, string> = {
   en: "en-IN", kn: "kn-IN", hi: "hi-IN", te: "te-IN", ta: "ta-IN",
@@ -125,16 +126,10 @@ export default function DonorDashboard() {
       return;
     }
     setDonating(true);
-    try {
-      // Upload photo to Firebase Storage now (for the listing record)
-      let photoUrl: string | undefined;
-      if (imageFile) {
-        const storageRef = ref(storage, `donor-scans/${appUser.uid}/${Date.now()}`);
-        await uploadBytes(storageRef, imageFile);
-        photoUrl = await getDownloadURL(storageRef);
-      }
 
-      const listingId = await createListing({
+    try {
+      // 1. Create listing immediately without image URL for faster UI response
+      const listingData = {
         restaurantId: appUser.uid,
         restaurantName: appUser.name,
         restaurantPhone: appUser.phone,
@@ -144,17 +139,39 @@ export default function DonorDashboard() {
         address: address.trim(),
         status: "available",
         notes: `Individual donor. Freshness: ${result.freshness}. Category: ${result.category}.`,
-        ...(photoUrl ? { imageUrl: photoUrl } : {}),
-      });
+        // imageUrl will be added later
+      };
+
+      const listingId = await createListing(listingData);
+      
+      // 2. Update UI immediately
+      setDonating(false);
       setDonated(true);
       toast.success("Your food is listed! Matching with NGOs now… 🙏");
 
-      // Fire coordinator to match any waiting NGO requests to this new listing
+      // 3. Handle background tasks (fire and forget from user's perspective)
+      // Upload photo and update listing
+      if (imageFile) {
+        const storageRef = ref(storage, `donor-scans/${appUser.uid}/${listingId}`);
+        uploadBytes(storageRef, imageFile).then(snapshot => {
+          getDownloadURL(snapshot.ref).then(photoUrl => {
+            // Update the existing listing with the image URL
+            const db = getFirestore();
+            const listingRef = doc(db, "foodListings", listingId);
+            updateDoc(listingRef, { imageUrl: photoUrl });
+          });
+        }).catch(err => {
+            console.error("Background image upload failed:", err);
+            // Optionally, log this to a monitoring service
+        });
+      }
+
+      // Fire coordinator to match any waiting NGO requests
       fetch("/api/agents/coordinator/match-listing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ listingId }),
-      }).catch(() => {});
+      }).catch(() => console.error("Coordinator agent trigger failed."));
 
       // Send WhatsApp notification to NGOs
       fetch("/api/whatsapp/notify-ngos", {
@@ -169,10 +186,10 @@ export default function DonorDashboard() {
         }),
       }).catch(err => console.error("Failed to send WhatsApp notification:", err));
 
-    } catch {
+    } catch (err) {
+      console.error("Failed to list food:", err);
       toast.error("Failed to list food. Please try again.");
-    } finally {
-      setDonating(false);
+      setDonating(false); // Ensure spinner stops on error
     }
   }
 

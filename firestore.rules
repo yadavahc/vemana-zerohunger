@@ -1,0 +1,87 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Safe role check — reads user doc only when needed, handles missing doc gracefully
+    function userRole() {
+      return isAuth()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '')
+        : '';
+    }
+
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    // ── Users ──────────────────────────────────────────────────────────────────
+    // Any authenticated user can read/write their own document.
+    // This is the very first write that happens (profile creation) so keep it simple.
+    match /users/{uid} {
+      allow read:   if isOwner(uid) || userRole() == 'admin';
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || userRole() == 'admin';
+    }
+
+    // ── Listings ───────────────────────────────────────────────────────────────
+    match /listings/{id} {
+      allow read:   if isAuth();
+      allow create: if userRole() == 'restaurant' || userRole() == 'donor';
+      allow update: if (isAuth() && resource.data.restaurantId == request.auth.uid)
+                    || userRole() == 'admin';
+      allow delete: if isAuth() && resource.data.restaurantId == request.auth.uid;
+    }
+
+    // ── Requests ───────────────────────────────────────────────────────────────
+    match /requests/{id} {
+      allow read:   if isAuth();
+      allow create: if userRole() == 'ngo';
+      allow update: if (userRole() == 'ngo' && resource.data.ngoId == request.auth.uid)
+                    || userRole() == 'admin';
+    }
+
+    // ── Matches ────────────────────────────────────────────────────────────────
+    // Created server-side only; restaurants can approve/decline their own matches
+    match /matches/{id} {
+      allow read:   if isAuth();
+      allow create: if isAuth(); // agents run client-side in this architecture
+      allow update: if (userRole() == 'restaurant' && resource.data.restaurantId == request.auth.uid)
+                    || userRole() == 'admin';
+    }
+
+    // ── Deliveries ─────────────────────────────────────────────────────────────
+    match /deliveries/{id} {
+      allow read:   if isAuth();
+      allow create: if isAuth(); // agents run client-side
+      allow update: if (userRole() == 'volunteer' && resource.data.volunteerId == request.auth.uid)
+                    || (userRole() == 'volunteer' && resource.data.status == 'finding_volunteer')
+                    || userRole() == 'admin';
+    }
+
+    // ── Escalations ────────────────────────────────────────────────────────────
+    match /escalations/{id} {
+      allow read:   if isAuth();
+      allow create: if isAuth(); // agents
+      allow update: if isAuth();
+    }
+
+    // ── Notifications ──────────────────────────────────────────────────────────
+    // Agents create notifications server-side without auth
+    match /notifications/{id} {
+      allow read:   if isAuth() && (resource.data.userId == request.auth.uid || userRole() == 'admin');
+      allow create: if true; // agents run server-side without auth context
+      allow update: if isAuth() && resource.data.userId == request.auth.uid;
+    }
+
+    // ── Agent logs ─────────────────────────────────────────────────────────────
+    // Server-side API routes write logs without Firebase auth context — allow unauthenticated writes
+    match /agent_logs/{id} {
+      allow read:   if isAuth();
+      allow create: if true;
+    }
+  }
+}
